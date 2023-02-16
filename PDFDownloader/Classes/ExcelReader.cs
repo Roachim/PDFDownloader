@@ -15,6 +15,8 @@ namespace PDFDownloader.Classes
     //Class for containing the proccesses related to reading the excel Metadata and GRI, including the links
     public static class ExcelReader
     {
+        private static SemaphoreSlim semaphore;
+        private static int padding;
         //Method - Get the Metadata Excel file
         public static string Metadata(string filepath)
         {
@@ -35,8 +37,12 @@ namespace PDFDownloader.Classes
         }
 
         //read excel data; add data to a list so we only access it once
-        public static async void ReadExcel(string filepathAndFile)
+        public static async Task ReadExcel(string filepathAndFile)
         {
+            //try the semaPhore
+            semaphore = new SemaphoreSlim(0, 3);
+            padding = 0;
+
             //HTTP start client
             using var client = new HttpClient();
 
@@ -51,16 +57,8 @@ namespace PDFDownloader.Classes
 
             //2 dictionaries for holding the links?
 
-            //iterate over the rows and columns and print to the console as it appears in the file
-            //excel is not zero based!!
-
             
 
-            string HTTP = "AL";
-            string HTTP2 = "AM";
-            string filename = "name";
-
-            bool worked = false;
 
             //create a text file; write for every download; name + donwloaded or could not be downloaded
             string PDFStatustext = Guide.PdfLocation() + @"DownloadStatus.txt";
@@ -69,16 +67,18 @@ namespace PDFDownloader.Classes
                 System.IO.File.Delete(PDFStatustext);
                 
             }
-            List<Task> tasks = new();
+            List<Task> tasks = new List<Task>();
             using StreamWriter textFileStream = System.IO.File.CreateText(PDFStatustext);
 
-            HTTP = string.Empty;
-            HTTP2 = string.Empty;
-            filename = string.Empty;
+            string HTTP = string.Empty;
+            string HTTP2 = string.Empty;
+            string filename = string.Empty;
 
             int rows = xlRange.Rows.Count;      // Setting counters outside the loop speeds it up
             int cols = xlRange.Columns.Count;
 
+            //iterate over the rows and columns and print to the console as it appears in the file
+            //excel is not zero based!!
             for (int i = 2; i <= 25; i++) //25 = columns
             {
                 for (int j = 1; j <= cols; j++)
@@ -110,20 +110,30 @@ namespace PDFDownloader.Classes
 
                 if (HTTP != string.Empty && filename != string.Empty)
                 {
-                    tasks.Add(DownloadPDF(client, filename, HTTP, HTTP2, textFileStream));
+                    Console.WriteLine("Adding new task: " + filename);
+                    tasks.Add(Task.Run(() => DownloadPDF(client, filename, HTTP, HTTP2, textFileStream, semaphore)));
+                    Console.WriteLine("Post task adding: " + filename);
+                    //await DownloadPDF(client, filename, HTTP, HTTP2, textFileStream);
                 }
 
             }
+            Thread.Sleep(500);
+            semaphore.Release(3);
 
-            const int page = 4;
-            for (int i = 0; i < tasks.Count / page; i++)
-            {
-                var t = tasks.Skip(i * page).Take(page).ToArray();
-                if (t.Length > 0)
-                    await Task.WhenAll(t);
-                else
-                    break;
-            }
+            //Task.WaitAll(tasks);
+
+            await Task.WhenAll(tasks);
+
+            //const int page = 10;
+            //for (int i = 0; i < tasks.Count / page; i++)
+            //{
+
+            //    var t = tasks.Skip(i * page).Take(page).ToArray();
+            //    if (t.Length > 0)
+            //        await Task.WhenAll(t);
+            //    else
+            //        break;
+            //}
 
 
             //lastly Cleanup - This is important: To prevent lingering processes from holding the file access writes to the workbook
@@ -151,17 +161,23 @@ namespace PDFDownloader.Classes
 
 
         //Method - Download PDF
-        public static async Task DownloadPDF(HttpClient client, string pdfName, string http, string http2, StreamWriter textFileStream)
+        public static async Task DownloadPDF(HttpClient client, string pdfName, string http, string http2, StreamWriter textFileStream, SemaphoreSlim semaphore)
         {
+            Interlocked.Increment(ref padding);
+            //Console.WriteLine("Task added: " + pdfName);
+            semaphore.Wait();
+
             Console.WriteLine("Attmepting to download " + pdfName);
-            //string fileSpace = @"C:\Users\KOM\Desktop\Opgaver\PDF downloader\PDFDownloader\PDFDownloader\bin\Debug\net6.0\";
             try //try to download the file using the first http link
             {
+                //Interlocked.Add(ref padding, 100);
                 using (var s = client.GetStreamAsync(http))
                 {
                     using (var fs = new FileStream(pdfName, FileMode.OpenOrCreate))
                     {
-                        s.Result.CopyTo(fs);
+                        await s.Result.CopyToAsync(fs);
+                        //await s.CopyToAsync(fs);
+
                     }
                 }
                 textFileStream.WriteLine(pdfName + " = Downloaded");
@@ -172,16 +188,19 @@ namespace PDFDownloader.Classes
                 {
                     try
                     {
+                        //Console.WriteLine("PDF {0} enters the semaphore.", pdfName);
                         using (var s = client.GetStreamAsync(http2))
                         {
                             using (var fs = new FileStream(pdfName, FileMode.OpenOrCreate))
                             {
-                                s.Result.CopyTo(fs);
+                                //s.Result.CopyTo(fs);
+                                await s.Result.CopyToAsync(fs);
+                                //await s.CopyToAsync(fs);
                             }
                         }
                         textFileStream.WriteLine(pdfName + " = Downloaded");
                     }
-                    catch (Exception) 
+                    catch (Exception)
                     {
                         if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
                         {
@@ -192,17 +211,18 @@ namespace PDFDownloader.Classes
                 }
                 else
                 {
-                    if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
-                    {
-                        System.IO.File.Delete(Guide.PdfLocation() + pdfName);
-                    }
+                    //if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
+                    //{
+                    //    System.IO.File.Delete(Guide.PdfLocation() + pdfName);
+                    //}
                     textFileStream.WriteLine(pdfName + " = could not be downloaded");
                 }
             }
+            int semaphoreCount = semaphore.Release();
+            //Console.WriteLine("Task {0} releases the semaphore; previous count: {1}.",
+                                  //Task.CurrentId, semaphoreCount);
+
         }
-
-
-        //
     }
 }
 
