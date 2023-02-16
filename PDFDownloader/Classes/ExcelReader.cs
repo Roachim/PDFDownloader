@@ -35,7 +35,7 @@ namespace PDFDownloader.Classes
         }
 
         //read excel data; add data to a list so we only access it once
-        public static void ReadExcel(string filepathAndFile)
+        public static async void ReadExcel(string filepathAndFile)
         {
             //HTTP start client
             using var client = new HttpClient();
@@ -51,12 +51,10 @@ namespace PDFDownloader.Classes
 
             //2 dictionaries for holding the links?
 
-
             //iterate over the rows and columns and print to the console as it appears in the file
             //excel is not zero based!!
 
-            int rows = xlRange.Rows.Count;      // Setting counters outside the loop speeds it up
-            int cols = xlRange.Columns.Count;
+            
 
             string HTTP = "AL";
             string HTTP2 = "AM";
@@ -71,13 +69,18 @@ namespace PDFDownloader.Classes
                 System.IO.File.Delete(PDFStatustext);
                 
             }
+            List<Task> tasks = new();
             using StreamWriter textFileStream = System.IO.File.CreateText(PDFStatustext);
 
-            for (int i = 2; i <= 20; i++)
+            HTTP = string.Empty;
+            HTTP2 = string.Empty;
+            filename = string.Empty;
+
+            int rows = xlRange.Rows.Count;      // Setting counters outside the loop speeds it up
+            int cols = xlRange.Columns.Count;
+
+            for (int i = 2; i <= 25; i++) //25 = columns
             {
-                HTTP = string.Empty;
-                HTTP2 = string.Empty;
-                filename = string.Empty;
                 for (int j = 1; j <= cols; j++)
                 {
                     if(j != 1 && j != 38 && j != 89)
@@ -85,13 +88,7 @@ namespace PDFDownloader.Classes
                         continue;
                     }
 
-                    //new line
-                    //if (j == 1)
-                    //    Console.Write("\r\n");
-
-                    ////write the value to the console
-                    //if (xlRange.Cells[i, j] != null && xlRange.Cells[i, j].Value2 != null)
-                    //    Console.Write(xlRange.Cells[i, j].Value2.ToString() + "\t");
+                    
 
                     //add useful things here!   
                     //important things; BRN-number, PDF-link. There are 2 links. AL and AM: Two dictionaries?
@@ -109,21 +106,23 @@ namespace PDFDownloader.Classes
                 if (!HTTP2.StartsWith("http")) { HTTP2 = "http://" + HTTP2; }
                 if (!HTTP.StartsWith("http") && !HTTP2.StartsWith("http")) { continue; }
 
+                
+
                 if (HTTP != string.Empty && filename != string.Empty)
                 {
-                    Console.WriteLine("attmepting to download " + filename.ToString());
-                    worked = DownloadPDF(client, filename, HTTP, HTTP2);
+                    tasks.Add(DownloadPDF(client, filename, HTTP, HTTP2, textFileStream));
                 }
-                if (worked)
-                {
-                    textFileStream.WriteLine(filename + " = Downloaded");
-                }
+
+            }
+
+            const int page = 4;
+            for (int i = 0; i < tasks.Count / page; i++)
+            {
+                var t = tasks.Skip(i * page).Take(page).ToArray();
+                if (t.Length > 0)
+                    await Task.WhenAll(t);
                 else
-                {
-                    textFileStream.WriteLine(filename + " = could not be downloaded");
-                }
-
-
+                    break;
             }
 
 
@@ -150,21 +149,11 @@ namespace PDFDownloader.Classes
 
         }
 
-        //Method - check if AL link works
-        public static bool ALLink()
-        {
-            return false;
-        }
-
-        //Method - Check if AM link works; Use if AL doesn't work
-        public static bool MLLink()
-        {
-            return false;
-        }
 
         //Method - Download PDF
-        public static bool DownloadPDF(HttpClient client, string pdfName, string http, string http2 )
+        public static async Task DownloadPDF(HttpClient client, string pdfName, string http, string http2, StreamWriter textFileStream)
         {
+            Console.WriteLine("Attmepting to download " + pdfName);
             //string fileSpace = @"C:\Users\KOM\Desktop\Opgaver\PDF downloader\PDFDownloader\PDFDownloader\bin\Debug\net6.0\";
             try //try to download the file using the first http link
             {
@@ -175,7 +164,7 @@ namespace PDFDownloader.Classes
                         s.Result.CopyTo(fs);
                     }
                 }
-                return true;
+                textFileStream.WriteLine(pdfName + " = Downloaded");
             }
             catch (Exception ex) //if fails
             {
@@ -187,31 +176,27 @@ namespace PDFDownloader.Classes
                         {
                             using (var fs = new FileStream(pdfName, FileMode.OpenOrCreate))
                             {
-
                                 s.Result.CopyTo(fs);
                             }
                         }
-                        return true;
+                        textFileStream.WriteLine(pdfName + " = Downloaded");
                     }
                     catch (Exception) 
                     {
                         if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
                         {
                             System.IO.File.Delete(Guide.PdfLocation() + pdfName);
-
                         }
-                        return false; 
+                        textFileStream.WriteLine(pdfName + " = could not be downloaded");
                     }
-
                 }
                 else
                 {
                     if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
                     {
                         System.IO.File.Delete(Guide.PdfLocation() + pdfName);
-
                     }
-                    return false;
+                    textFileStream.WriteLine(pdfName + " = could not be downloaded");
                 }
             }
         }
@@ -278,3 +263,14 @@ namespace PDFDownloader.Classes
 //{
 //    // this was a "download link"
 //}
+
+
+
+//Lines for the loop with download pdf
+//new line
+//if (j == 1)
+//    Console.Write("\r\n");
+
+////write the value to the console
+//if (xlRange.Cells[i, j] != null && xlRange.Cells[i, j].Value2 != null)
+//    Console.Write(xlRange.Cells[i, j].Value2.ToString() + "\t");
