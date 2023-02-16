@@ -65,13 +65,13 @@ namespace PDFDownloader.Classes
             bool worked = false;
 
             //create a text file; write for every download; name + donwloaded or could not be downloaded
-            string textName = @"C:\Users\KOM\Desktop\Opgaver\PDF downloader\PDFDownloader\PDFDownloader\bin\Debug\net6.0\DownloadStatus.txt";
-            if (System.IO.File.Exists(textName))
+            string PDFStatustext = Guide.PdfLocation() + @"DownloadStatus.txt";
+            if (System.IO.File.Exists(PDFStatustext))
             {
-                System.IO.File.Delete(textName);
+                System.IO.File.Delete(PDFStatustext);
                 
             }
-            using StreamWriter textFileStream = System.IO.File.CreateText(textName);
+            using StreamWriter textFileStream = System.IO.File.CreateText(PDFStatustext);
 
             for (int i = 2; i <= 20; i++)
             {
@@ -165,7 +165,7 @@ namespace PDFDownloader.Classes
         //Method - Download PDF
         public static bool DownloadPDF(HttpClient client, string pdfName, string http, string http2 )
         {
-            string fileSpace = @"C:\Users\KOM\Desktop\Opgaver\PDF downloader\PDFDownloader\PDFDownloader\bin\Debug\net6.0\";
+            //string fileSpace = @"C:\Users\KOM\Desktop\Opgaver\PDF downloader\PDFDownloader\PDFDownloader\bin\Debug\net6.0\";
             try //try to download the file using the first http link
             {
                 using (var s = client.GetStreamAsync(http))
@@ -195,9 +195,9 @@ namespace PDFDownloader.Classes
                     }
                     catch (Exception) 
                     {
-                        if (System.IO.File.Exists(fileSpace + pdfName))
+                        if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
                         {
-                            System.IO.File.Delete(fileSpace + pdfName);
+                            System.IO.File.Delete(Guide.PdfLocation() + pdfName);
 
                         }
                         return false; 
@@ -206,9 +206,9 @@ namespace PDFDownloader.Classes
                 }
                 else
                 {
-                    if (System.IO.File.Exists(fileSpace + pdfName))
+                    if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
                     {
-                        System.IO.File.Delete(fileSpace + pdfName);
+                        System.IO.File.Delete(Guide.PdfLocation() + pdfName);
 
                     }
                     return false;
@@ -216,11 +216,6 @@ namespace PDFDownloader.Classes
             }
         }
 
-        //Method - Name PDF using BRN-number
-        public static bool NamePDF()
-        {
-            return false;
-        }
 
         //
     }
