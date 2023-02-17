@@ -9,12 +9,15 @@ using Excel = Microsoft.Office.Interop.Excel;
 using System.Runtime.InteropServices;
 using static System.Net.WebRequestMethods;
 using Microsoft.Office.Interop.Excel;
+using System.Globalization;
 
 namespace PDFDownloader.Classes
 {
     //Class for containing the proccesses related to reading the excel Metadata and GRI, including the links
     public static class ExcelReader
     {
+        private static SemaphoreSlim semaphore;
+        private static int padding;
         //Method - Get the Metadata Excel file
         public static string Metadata(string filepath)
         {
@@ -35,8 +38,12 @@ namespace PDFDownloader.Classes
         }
 
         //read excel data; add data to a list so we only access it once
-        public static void ReadExcel(string filepathAndFile)
+        public static async Task ReadExcel(string filepathAndFile)
         {
+            int maxThreads = 100;
+            semaphore = new SemaphoreSlim(0, maxThreads);    //Semaphore; tasks allowed at once
+            padding = 0;
+
             //HTTP start client
             using var client = new HttpClient();
 
@@ -49,20 +56,7 @@ namespace PDFDownloader.Classes
             Excel._Worksheet xlWorksheet = xlWorkbook.Sheets[1];
             Excel.Range xlRange = xlWorksheet.UsedRange;
 
-            //2 dictionaries for holding the links?
 
-
-            //iterate over the rows and columns and print to the console as it appears in the file
-            //excel is not zero based!!
-
-            int rows = xlRange.Rows.Count;      // Setting counters outside the loop speeds it up
-            int cols = xlRange.Columns.Count;
-
-            string HTTP = "AL";
-            string HTTP2 = "AM";
-            string filename = "name";
-
-            bool worked = false;
 
             //create a text file; write for every download; name + donwloaded or could not be downloaded
             string PDFStatustext = Guide.PdfLocation() + @"DownloadStatus.txt";
@@ -71,13 +65,24 @@ namespace PDFDownloader.Classes
                 System.IO.File.Delete(PDFStatustext);
                 
             }
+            
+
             using StreamWriter textFileStream = System.IO.File.CreateText(PDFStatustext);
 
-            for (int i = 2; i <= 20; i++)
+            string HTTP = string.Empty;
+            string HTTP2 = string.Empty;
+            string filename = string.Empty;
+            int tempRow = 100;
+            int rows = xlRange.Rows.Count;      // Setting counters outside the loop speeds it up
+            int cols = xlRange.Columns.Count;
+
+            //iterate over the rows and columns and print to the console as it appears in the file
+            //excel is not zero based!!
+
+            List<Task> tasks = new List<Task>();
+
+            for (int i = 2; i <= rows; i++) //25 = columns
             {
-                HTTP = string.Empty;
-                HTTP2 = string.Empty;
-                filename = string.Empty;
                 for (int j = 1; j <= cols; j++)
                 {
                     if(j != 1 && j != 38 && j != 89)
@@ -85,13 +90,7 @@ namespace PDFDownloader.Classes
                         continue;
                     }
 
-                    //new line
-                    //if (j == 1)
-                    //    Console.Write("\r\n");
-
-                    ////write the value to the console
-                    //if (xlRange.Cells[i, j] != null && xlRange.Cells[i, j].Value2 != null)
-                    //    Console.Write(xlRange.Cells[i, j].Value2.ToString() + "\t");
+                    
 
                     //add useful things here!   
                     //important things; BRN-number, PDF-link. There are 2 links. AL and AM: Two dictionaries?
@@ -105,36 +104,31 @@ namespace PDFDownloader.Classes
 
                 }
                 //download only if link 1 or 2 is legit
-                if (!HTTP.StartsWith("http")) { HTTP = "http://" + HTTP; }
-                if (!HTTP2.StartsWith("http")) { HTTP2 = "http://" + HTTP2; }
+                if (!HTTP.StartsWith("http") && HTTP != string.Empty) { HTTP = "http://" + HTTP; }
+                if (!HTTP2.StartsWith("http") && HTTP2 != string.Empty) { HTTP2 = "http://" + HTTP2; }
                 if (!HTTP.StartsWith("http") && !HTTP2.StartsWith("http")) { continue; }
+
+                
 
                 if (HTTP != string.Empty && filename != string.Empty)
                 {
-                    Console.WriteLine("attmepting to download " + filename.ToString());
-                    worked = DownloadPDF(client, filename, HTTP, HTTP2);
+                    Console.WriteLine("Adding new task: " + filename);
+                    tasks.Add(Task.Run(() => DownloadPDF(client, filename, HTTP, HTTP2, textFileStream, semaphore)));
+                    Console.WriteLine("Post task adding: " + filename);
                 }
-                if (worked)
-                {
-                    textFileStream.WriteLine(filename + " = Downloaded");
-                }
-                else
-                {
-                    textFileStream.WriteLine(filename + " = could not be downloaded");
-                }
-
 
             }
+            Thread.Sleep(500);
+
+            semaphore.Release(maxThreads);
+
+            await Task.WhenAll(tasks);    
 
 
             //lastly Cleanup - This is important: To prevent lingering processes from holding the file access writes to the workbook
             //cleanup
             GC.Collect();
             GC.WaitForPendingFinalizers();
-
-            //rule of thumb for releasing com objects:
-            //  never use two dots, all COM objects must be referenced and released individually
-            //  ex: [somthing].[something].[something] is bad
 
             //release com objects to fully kill excel process from running in the background
             Marshal.ReleaseComObject(xlRange);
@@ -150,32 +144,38 @@ namespace PDFDownloader.Classes
 
         }
 
-        //Method - check if AL link works
-        public static bool ALLink()
-        {
-            return false;
-        }
-
-        //Method - Check if AM link works; Use if AL doesn't work
-        public static bool MLLink()
-        {
-            return false;
-        }
 
         //Method - Download PDF
-        public static bool DownloadPDF(HttpClient client, string pdfName, string http, string http2 )
+        public static async Task DownloadPDF(HttpClient client, string pdfName, string http, string http2, StreamWriter textFileStream, SemaphoreSlim semaphore)
         {
-            //string fileSpace = @"C:\Users\KOM\Desktop\Opgaver\PDF downloader\PDFDownloader\PDFDownloader\bin\Debug\net6.0\";
+            //Console.WriteLine("Task added: " + pdfName);
+            await semaphore.WaitAsync(); //await and waitAsync the semaphore, or suffer the consequences...
+
+            Console.WriteLine("Attmepting to download " + pdfName);
             try //try to download the file using the first http link
             {
+                Interlocked.Add(ref padding, 100);
                 using (var s = client.GetStreamAsync(http))
                 {
                     using (var fs = new FileStream(pdfName, FileMode.OpenOrCreate))
                     {
-                        s.Result.CopyTo(fs);
+                        await s.Result.CopyToAsync(fs);
+                        //await s.CopyToAsync(fs);
+
+                    }
+                    //check if pdf or not.
+                    if (!IsPdf(Guide.PdfLocation() + pdfName))
+                    {
+                        System.IO.File.Delete(Guide.PdfLocation() + pdfName);
+                        textFileStream.WriteLine(pdfName + " = could not be downloaded");
+
+                    }
+                    else
+                    {
+                        textFileStream.WriteLine(pdfName + " = Downloaded");
                     }
                 }
-                return true;
+                
             }
             catch (Exception ex) //if fails
             {
@@ -183,41 +183,72 @@ namespace PDFDownloader.Classes
                 {
                     try
                     {
-                        using (var s = client.GetStreamAsync(http2))
+                        //Console.WriteLine("PDF {0} enters the semaphore.", pdfName);
+                        using (var s = await client.GetStreamAsync(http2))
                         {
                             using (var fs = new FileStream(pdfName, FileMode.OpenOrCreate))
                             {
+                                //s.Result.CopyTo(fs);
+                                //await s.Result.CopyToAsync(fs);
+                                await s.CopyToAsync(fs);
 
-                                s.Result.CopyTo(fs);
+                            }
+                            //check if pdf or not
+                            if (!IsPdf(Guide.PdfLocation() + pdfName))
+                            {
+                                System.IO.File.Delete(Guide.PdfLocation() + pdfName);
+                                textFileStream.WriteLine(pdfName + " = could not be downloaded");
+
+                            }
+                            else
+                            {
+                                textFileStream.WriteLine(pdfName + " = Downloaded");
                             }
                         }
-                        return true;
+                        textFileStream.WriteLine(pdfName + " = Downloaded");
                     }
-                    catch (Exception) 
+                    catch (Exception)
                     {
                         if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
                         {
                             System.IO.File.Delete(Guide.PdfLocation() + pdfName);
-
                         }
-                        return false; 
+                        textFileStream.WriteLine(pdfName + " = could not be downloaded");
                     }
-
                 }
                 else
                 {
                     if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
                     {
                         System.IO.File.Delete(Guide.PdfLocation() + pdfName);
-
                     }
-                    return false;
+                    textFileStream.WriteLine(pdfName + " = could not be downloaded");
                 }
             }
+            semaphore.Release();
         }
 
 
-        //
+        public static bool IsPdf(string path) //determine whether or not a file is a pdf
+        {
+            var pdfString = "%PDF-";
+            var pdfBytes = Encoding.ASCII.GetBytes(pdfString);
+            var len = pdfBytes.Length;
+            var buf = new byte[len];
+            var remaining = len;
+            var pos = 0;
+            using (var f = System.IO.File.OpenRead(path))
+            {
+                while (remaining > 0)
+                {
+                    var amtRead = f.Read(buf, pos, remaining);
+                    if (amtRead == 0) return false;
+                    remaining -= amtRead;
+                    pos += amtRead;
+                }
+            }
+            return pdfBytes.SequenceEqual(buf);
+        }
     }
 }
 
@@ -278,3 +309,14 @@ namespace PDFDownloader.Classes
 //{
 //    // this was a "download link"
 //}
+
+
+
+//Lines for the loop with download pdf
+//new line
+//if (j == 1)
+//    Console.Write("\r\n");
+
+////write the value to the console
+//if (xlRange.Cells[i, j] != null && xlRange.Cells[i, j].Value2 != null)
+//    Console.Write(xlRange.Cells[i, j].Value2.ToString() + "\t");
