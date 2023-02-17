@@ -9,6 +9,7 @@ using Excel = Microsoft.Office.Interop.Excel;
 using System.Runtime.InteropServices;
 using static System.Net.WebRequestMethods;
 using Microsoft.Office.Interop.Excel;
+using System.Globalization;
 
 namespace PDFDownloader.Classes
 {
@@ -39,8 +40,8 @@ namespace PDFDownloader.Classes
         //read excel data; add data to a list so we only access it once
         public static async Task ReadExcel(string filepathAndFile)
         {
-            //try the semaPhore
-            semaphore = new SemaphoreSlim(0, 3);
+            int maxThreads = 100;
+            semaphore = new SemaphoreSlim(0, maxThreads);    //Semaphore; tasks allowed at once
             padding = 0;
 
             //HTTP start client
@@ -55,9 +56,6 @@ namespace PDFDownloader.Classes
             Excel._Worksheet xlWorksheet = xlWorkbook.Sheets[1];
             Excel.Range xlRange = xlWorksheet.UsedRange;
 
-            //2 dictionaries for holding the links?
-
-            
 
 
             //create a text file; write for every download; name + donwloaded or could not be downloaded
@@ -67,19 +65,23 @@ namespace PDFDownloader.Classes
                 System.IO.File.Delete(PDFStatustext);
                 
             }
-            List<Task> tasks = new List<Task>();
+            
+
             using StreamWriter textFileStream = System.IO.File.CreateText(PDFStatustext);
 
             string HTTP = string.Empty;
             string HTTP2 = string.Empty;
             string filename = string.Empty;
-
+            int tempRow = 100;
             int rows = xlRange.Rows.Count;      // Setting counters outside the loop speeds it up
             int cols = xlRange.Columns.Count;
 
             //iterate over the rows and columns and print to the console as it appears in the file
             //excel is not zero based!!
-            for (int i = 2; i <= 25; i++) //25 = columns
+
+            List<Task> tasks = new List<Task>();
+
+            for (int i = 2; i <= rows; i++) //25 = columns
             {
                 for (int j = 1; j <= cols; j++)
                 {
@@ -102,8 +104,8 @@ namespace PDFDownloader.Classes
 
                 }
                 //download only if link 1 or 2 is legit
-                if (!HTTP.StartsWith("http")) { HTTP = "http://" + HTTP; }
-                if (!HTTP2.StartsWith("http")) { HTTP2 = "http://" + HTTP2; }
+                if (!HTTP.StartsWith("http") && HTTP != string.Empty) { HTTP = "http://" + HTTP; }
+                if (!HTTP2.StartsWith("http") && HTTP2 != string.Empty) { HTTP2 = "http://" + HTTP2; }
                 if (!HTTP.StartsWith("http") && !HTTP2.StartsWith("http")) { continue; }
 
                 
@@ -113,37 +115,20 @@ namespace PDFDownloader.Classes
                     Console.WriteLine("Adding new task: " + filename);
                     tasks.Add(Task.Run(() => DownloadPDF(client, filename, HTTP, HTTP2, textFileStream, semaphore)));
                     Console.WriteLine("Post task adding: " + filename);
-                    //await DownloadPDF(client, filename, HTTP, HTTP2, textFileStream);
                 }
 
             }
             Thread.Sleep(500);
-            semaphore.Release(3);
 
-            //Task.WaitAll(tasks);
+            semaphore.Release(maxThreads);
 
-            await Task.WhenAll(tasks);
-
-            //const int page = 10;
-            //for (int i = 0; i < tasks.Count / page; i++)
-            //{
-
-            //    var t = tasks.Skip(i * page).Take(page).ToArray();
-            //    if (t.Length > 0)
-            //        await Task.WhenAll(t);
-            //    else
-            //        break;
-            //}
+            await Task.WhenAll(tasks);    
 
 
             //lastly Cleanup - This is important: To prevent lingering processes from holding the file access writes to the workbook
             //cleanup
             GC.Collect();
             GC.WaitForPendingFinalizers();
-
-            //rule of thumb for releasing com objects:
-            //  never use two dots, all COM objects must be referenced and released individually
-            //  ex: [somthing].[something].[something] is bad
 
             //release com objects to fully kill excel process from running in the background
             Marshal.ReleaseComObject(xlRange);
@@ -163,14 +148,13 @@ namespace PDFDownloader.Classes
         //Method - Download PDF
         public static async Task DownloadPDF(HttpClient client, string pdfName, string http, string http2, StreamWriter textFileStream, SemaphoreSlim semaphore)
         {
-            Interlocked.Increment(ref padding);
             //Console.WriteLine("Task added: " + pdfName);
-            semaphore.Wait();
+            await semaphore.WaitAsync(); //await and waitAsync the semaphore, or suffer the consequences...
 
             Console.WriteLine("Attmepting to download " + pdfName);
             try //try to download the file using the first http link
             {
-                //Interlocked.Add(ref padding, 100);
+                Interlocked.Add(ref padding, 100);
                 using (var s = client.GetStreamAsync(http))
                 {
                     using (var fs = new FileStream(pdfName, FileMode.OpenOrCreate))
@@ -179,8 +163,19 @@ namespace PDFDownloader.Classes
                         //await s.CopyToAsync(fs);
 
                     }
+                    //check if pdf or not.
+                    if (!IsPdf(Guide.PdfLocation() + pdfName))
+                    {
+                        System.IO.File.Delete(Guide.PdfLocation() + pdfName);
+                        textFileStream.WriteLine(pdfName + " = could not be downloaded");
+
+                    }
+                    else
+                    {
+                        textFileStream.WriteLine(pdfName + " = Downloaded");
+                    }
                 }
-                textFileStream.WriteLine(pdfName + " = Downloaded");
+                
             }
             catch (Exception ex) //if fails
             {
@@ -189,13 +184,25 @@ namespace PDFDownloader.Classes
                     try
                     {
                         //Console.WriteLine("PDF {0} enters the semaphore.", pdfName);
-                        using (var s = client.GetStreamAsync(http2))
+                        using (var s = await client.GetStreamAsync(http2))
                         {
                             using (var fs = new FileStream(pdfName, FileMode.OpenOrCreate))
                             {
                                 //s.Result.CopyTo(fs);
-                                await s.Result.CopyToAsync(fs);
-                                //await s.CopyToAsync(fs);
+                                //await s.Result.CopyToAsync(fs);
+                                await s.CopyToAsync(fs);
+
+                            }
+                            //check if pdf or not
+                            if (!IsPdf(Guide.PdfLocation() + pdfName))
+                            {
+                                System.IO.File.Delete(Guide.PdfLocation() + pdfName);
+                                textFileStream.WriteLine(pdfName + " = could not be downloaded");
+
+                            }
+                            else
+                            {
+                                textFileStream.WriteLine(pdfName + " = Downloaded");
                             }
                         }
                         textFileStream.WriteLine(pdfName + " = Downloaded");
@@ -211,17 +218,36 @@ namespace PDFDownloader.Classes
                 }
                 else
                 {
-                    //if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
-                    //{
-                    //    System.IO.File.Delete(Guide.PdfLocation() + pdfName);
-                    //}
+                    if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
+                    {
+                        System.IO.File.Delete(Guide.PdfLocation() + pdfName);
+                    }
                     textFileStream.WriteLine(pdfName + " = could not be downloaded");
                 }
             }
-            int semaphoreCount = semaphore.Release();
-            //Console.WriteLine("Task {0} releases the semaphore; previous count: {1}.",
-                                  //Task.CurrentId, semaphoreCount);
+            semaphore.Release();
+        }
 
+
+        public static bool IsPdf(string path) //determine whether or not a file is a pdf
+        {
+            var pdfString = "%PDF-";
+            var pdfBytes = Encoding.ASCII.GetBytes(pdfString);
+            var len = pdfBytes.Length;
+            var buf = new byte[len];
+            var remaining = len;
+            var pos = 0;
+            using (var f = System.IO.File.OpenRead(path))
+            {
+                while (remaining > 0)
+                {
+                    var amtRead = f.Read(buf, pos, remaining);
+                    if (amtRead == 0) return false;
+                    remaining -= amtRead;
+                    pos += amtRead;
+                }
+            }
+            return pdfBytes.SequenceEqual(buf);
         }
     }
 }
