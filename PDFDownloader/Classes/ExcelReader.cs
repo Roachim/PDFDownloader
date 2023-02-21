@@ -10,6 +10,8 @@ using System.Runtime.InteropServices;
 using static System.Net.WebRequestMethods;
 using Microsoft.Office.Interop.Excel;
 using System.Globalization;
+using System.Diagnostics;
+using System.ComponentModel;
 
 namespace PDFDownloader.Classes
 {
@@ -19,23 +21,6 @@ namespace PDFDownloader.Classes
         private static SemaphoreSlim semaphore;
         private static int padding;
         //Method - Get the Metadata Excel file
-        public static string Metadata(string filepath)
-        {
-            string meta = @"\Metadata2006_2016.xlsx";
-            string returnfile = filepath + meta;
-
-            return returnfile;
-        }
-
-        //Method - Get the GRI excel file
-
-        public static string GRI(string filepath) 
-        {
-            string meta = @"\GRI_2017_2020.xlsx";
-            string returnfile = filepath + meta;
-
-            return returnfile;
-        }
 
         //read excel data; add data to a list so we only access it once
         public static async Task ReadExcel(string filepathAndFile)
@@ -43,6 +28,7 @@ namespace PDFDownloader.Classes
             int maxThreads = 100;
             semaphore = new SemaphoreSlim(0, maxThreads);    //Semaphore; tasks allowed at once
             padding = 0;
+            bool useSemaphores = true;
 
             //HTTP start client
             using var client = new HttpClient();
@@ -56,14 +42,20 @@ namespace PDFDownloader.Classes
             Excel._Worksheet xlWorksheet = xlWorkbook.Sheets[1];
             Excel.Range xlRange = xlWorksheet.UsedRange;
 
+            string DownloadFolder = Guide.PDFLocation;
+
+            if (System.IO.Directory.Exists(DownloadFolder))
+            {
+                System.IO.Directory.Delete(DownloadFolder, true);
+            }
+
+            System.IO.Directory.CreateDirectory(DownloadFolder);
 
 
-            //create a text file; write for every download; name + donwloaded or could not be downloaded
-            string PDFStatustext = Guide.PdfLocation() + @"DownloadStatus.txt";
+            string PDFStatustext = Guide.PDFLocation + @"DownloadStatus.txt";
             if (System.IO.File.Exists(PDFStatustext))
             {
                 System.IO.File.Delete(PDFStatustext);
-                
             }
             
 
@@ -72,7 +64,7 @@ namespace PDFDownloader.Classes
             string HTTP = string.Empty;
             string HTTP2 = string.Empty;
             string filename = string.Empty;
-            int tempRow = 100;
+            int tempRow = 30;
             int rows = xlRange.Rows.Count;      // Setting counters outside the loop speeds it up
             int cols = xlRange.Columns.Count;
 
@@ -81,7 +73,7 @@ namespace PDFDownloader.Classes
 
             List<Task> tasks = new List<Task>();
 
-            for (int i = 2; i <= rows; i++) //25 = columns
+            for (int i = 2; i <= rows; i++) 
             {
                 for (int j = 1; j <= cols; j++)
                 {
@@ -89,33 +81,14 @@ namespace PDFDownloader.Classes
                     {
                         continue;
                     }
-
-                    
-
-                    //add useful things here!   
-                    //important things; BRN-number, PDF-link. There are 2 links. AL and AM: Two dictionaries?
-                    //alternetive: Simply download pdf here and take note immediately.
+                    //alternative: save all links in dictionaries, use the after
 
                     if(j == 1) { filename = xlRange.Cells[i, j].Value2.ToString() + ".pdf"; }
                     if(j == 38) { HTTP = xlRange.Cells[i, j].Value2.ToString(); }
                     if(j == 39) { HTTP2 = xlRange.Cells[i, j].Value2.ToString(); }
-
-
-
                 }
-                //download only if link 1 or 2 is legit
-                if (!HTTP.StartsWith("http") && HTTP != string.Empty) { HTTP = "http://" + HTTP; }
-                if (!HTTP2.StartsWith("http") && HTTP2 != string.Empty) { HTTP2 = "http://" + HTTP2; }
-                if (!HTTP.StartsWith("http") && !HTTP2.StartsWith("http")) { continue; }
-
-                
-
-                if (HTTP != string.Empty && filename != string.Empty)
-                {
-                    Console.WriteLine("Adding new task: " + filename);
-                    tasks.Add(Task.Run(() => DownloadPDF(client, filename, HTTP, HTTP2, textFileStream, semaphore)));
-                    Console.WriteLine("Post task adding: " + filename);
-                }
+                Console.WriteLine("Adding new task: " + filename);
+                tasks.Add(Task.Run(() => DownloadPDF(client, filename, HTTP, HTTP2, textFileStream, semaphore)));
 
             }
             Thread.Sleep(500);
@@ -145,91 +118,107 @@ namespace PDFDownloader.Classes
         }
 
 
-        //Method - Download PDF
+        /// <summary>
+        /// Task to be run for every pdf. Downloades pdf via links. Writes the result to a .txt and can be limited with semaphores
+        /// </summary>
+        /// <param name="client">http client</param>
+        /// <param name="pdfName">Name for the downloaded file</param>
+        /// <param name="http">First link to try</param>
+        /// <param name="http2">Second link to try</param>
+        /// <param name="textFileStream">A StreamWriter to write to a .txt</param>
+        /// <param name="semaphore">The loaded semaphore</param>
+        /// <returns></returns>
         public static async Task DownloadPDF(HttpClient client, string pdfName, string http, string http2, StreamWriter textFileStream, SemaphoreSlim semaphore)
         {
-            //Console.WriteLine("Task added: " + pdfName);
             await semaphore.WaitAsync(); //await and waitAsync the semaphore, or suffer the consequences...
+            
+            Interlocked.Add(ref padding, 100);
 
-            Console.WriteLine("Attmepting to download " + pdfName);
-            try //try to download the file using the first http link
+            bool fileDownloaded = true;
+
+            fileDownloaded = await CheckLinkStatus(client, pdfName, http, textFileStream, fileDownloaded);
+
+            //Second link to try
+            if (!fileDownloaded)
             {
-                Interlocked.Add(ref padding, 100);
-                using (var s = client.GetStreamAsync(http))
-                {
-                    using (var fs = new FileStream(pdfName, FileMode.OpenOrCreate))
-                    {
-                        await s.Result.CopyToAsync(fs);
-                        //await s.CopyToAsync(fs);
-
-                    }
-                    //check if pdf or not.
-                    if (!IsPdf(Guide.PdfLocation() + pdfName))
-                    {
-                        System.IO.File.Delete(Guide.PdfLocation() + pdfName);
-                        textFileStream.WriteLine(pdfName + " = could not be downloaded");
-
-                    }
-                    else
-                    {
-                        textFileStream.WriteLine(pdfName + " = Downloaded");
-                    }
-                }
-                
+                //second http -------------------------------------------------------------------------------------------
+                fileDownloaded = await CheckLinkStatus(client, pdfName, http2, textFileStream, fileDownloaded);
             }
-            catch (Exception ex) //if fails
+            if (!fileDownloaded)
             {
-                if (http2 != string.Empty) //try to use the second link if it is there
+                textFileStream.WriteLine(pdfName + " = not downloaded");
+            }
+
+
+            semaphore.Release(); // program MUST reach this line of code
+        }
+
+        private static async Task<bool> CheckLinkStatus(HttpClient client, string pdfName, string http, StreamWriter textFileStream, bool fileDownloaded)
+        {
+            try
+            {
+                if (Uri.IsWellFormedUriString(http, UriKind.Absolute)) //see if URI is permissable; use other link if not
                 {
-                    try
-                    {
-                        //Console.WriteLine("PDF {0} enters the semaphore.", pdfName);
-                        using (var s = await client.GetStreamAsync(http2))
-                        {
-                            using (var fs = new FileStream(pdfName, FileMode.OpenOrCreate))
-                            {
-                                //s.Result.CopyTo(fs);
-                                //await s.Result.CopyToAsync(fs);
-                                await s.CopyToAsync(fs);
+                    var response = await client.GetAsync(http);
 
-                            }
-                            //check if pdf or not
-                            if (!IsPdf(Guide.PdfLocation() + pdfName))
-                            {
-                                System.IO.File.Delete(Guide.PdfLocation() + pdfName);
-                                textFileStream.WriteLine(pdfName + " = could not be downloaded");
 
-                            }
-                            else
-                            {
-                                textFileStream.WriteLine(pdfName + " = Downloaded");
-                            }
-                        }
-                        textFileStream.WriteLine(pdfName + " = Downloaded");
-                    }
-                    catch (Exception)
+                    if (response.StatusCode == System.Net.HttpStatusCode.OK) // use other link if not ok
                     {
-                        if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
-                        {
-                            System.IO.File.Delete(Guide.PdfLocation() + pdfName);
-                        }
-                        textFileStream.WriteLine(pdfName + " = could not be downloaded");
+                        fileDownloaded = await UseDownloadLink(client, http, pdfName, textFileStream); //use other link if wasnt pdf
                     }
+                    else { fileDownloaded = false; }
+                }
+                else { fileDownloaded = false; }
+            }
+            catch (Exception ex) //whatever happens with the error
+            { 
+                Console.WriteLine(ex.Message);
+                fileDownloaded = false;
+            }
+
+            return fileDownloaded;
+        }
+
+        /// <summary>
+        /// Async method for using a download link. Writes to a textfile if download succeeded.
+        /// </summary>
+        /// <param name="client">The httpClient used</param>
+        /// <param name="http">Download link</param>
+        /// <param name="pdfName">Name of to be downloaded</param>
+        /// <param name="textFileStream">The StreamWriter used to write to the text file</param>
+        /// <returns>Bool; false if it succeded; True if it didn't</returns>
+        private async static Task<bool> UseDownloadLink(HttpClient client, string http, string pdfName, StreamWriter textFileStream) //revise the true and false
+        {
+            Console.WriteLine("Attmepting to download " + pdfName);
+            using (var s = await client.GetStreamAsync(http))
+            {
+                
+                using (var fs = new FileStream(Guide.PDFLocation + pdfName, FileMode.OpenOrCreate))
+                {
+                    await s.CopyToAsync(fs);
+                    Console.WriteLine(pdfName +" downloaded");
+                }
+                //check if pdf or not
+                if (!IsPdf(Guide.PDFLocation + pdfName))
+                {
+                    System.IO.File.Delete(Guide.PDFLocation + pdfName);
+                    return false;
                 }
                 else
                 {
-                    if (System.IO.File.Exists(Guide.PdfLocation() + pdfName))
-                    {
-                        System.IO.File.Delete(Guide.PdfLocation() + pdfName);
-                    }
-                    textFileStream.WriteLine(pdfName + " = could not be downloaded");
+                    textFileStream.WriteLine(pdfName + " = Downloaded");
+                    return true;
                 }
             }
-            semaphore.Release();
         }
 
-
-        public static bool IsPdf(string path) //determine whether or not a file is a pdf
+        
+        /// <summary>
+        /// Method for checking whether a file, already downloaded, is pdf or not.
+        /// </summary>
+        /// <param name="path">Location of pdf, including name of pdf</param>
+        /// <returns>bool; false if input is not pdf. True if input is pdf</returns>
+        public static bool IsPdf(string path) //determine whether or not a file is a pdf, does not work for 0 kb psf files for some reason
         {
             var pdfString = "%PDF-";
             var pdfBytes = Encoding.ASCII.GetBytes(pdfString);
@@ -242,7 +231,8 @@ namespace PDFDownloader.Classes
                 while (remaining > 0)
                 {
                     var amtRead = f.Read(buf, pos, remaining);
-                    if (amtRead == 0) return false;
+                    if (amtRead == 0) return false; //why not work?
+                    if (amtRead < 5) return false; //also, why not work?
                     remaining -= amtRead;
                     pos += amtRead;
                 }
@@ -257,66 +247,3 @@ namespace PDFDownloader.Classes
 
 
 
-
-//-------------------------------------------don't look-------------------------------------------------
-//Experimental code for downloading and trying 2 different links in a try catch
-
-//if (HTTP != string.Empty && filename != string.Empty)
-//{
-//    //DownloadPDF(HTTP, filename+".pdf");
-//    try //try to download the file using the first http link
-//    {
-//        using (var s = client.GetStreamAsync(HTTP))
-//        {
-//            using (var fs = new FileStream(filename, FileMode.OpenOrCreate))
-//            {
-//                s.Result.CopyTo(fs);
-//            }
-//        }
-//    }
-//    catch (Exception ex) //if fails
-//    {
-//        if (HTTP2 != string.Empty) //try to use the second link if it is there
-//        {
-//            try
-//            {
-//                using (var s = client.GetStreamAsync(HTTP2))
-//                {
-//                    using (var fs = new FileStream(filename, FileMode.OpenOrCreate))
-//                    {
-//                        s.Result.CopyTo(fs);
-//                    }
-//                }
-//            }
-//            catch (Exception) { }
-
-//        }
-//        else
-//        {
-
-//        }
-//    }
-
-
-//}
-
-
-
-//-----code for seeing if client is getting a pdf format from http
-//var pdfType = "application/pdf";
-
-//if (client.ResponseHeaders["Content-Type"].Contains(someType))
-//{
-//    // this was a "download link"
-//}
-
-
-
-//Lines for the loop with download pdf
-//new line
-//if (j == 1)
-//    Console.Write("\r\n");
-
-////write the value to the console
-//if (xlRange.Cells[i, j] != null && xlRange.Cells[i, j].Value2 != null)
-//    Console.Write(xlRange.Cells[i, j].Value2.ToString() + "\t");
