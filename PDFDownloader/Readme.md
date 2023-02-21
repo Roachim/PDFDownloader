@@ -30,10 +30,9 @@ If you have any question regarding the steps, please refer to the "advanced how 
 - Right after, press the keys ctrl and c at the same time.
 - Now back to the program, click on the program window, anywhere on the black screen, and press the crtl and v keys at the same time.
 - You should now see new text pop into the window(example below), and if you do, simply press 'Enter'.
-
+´´´
 Example of a path: C:\Users\xyz\Desktop\PDFAssignment
-
-                   -----------------------------------
+´´´
 
 4: Wait until done?
 - Yes, just wait until the program writes "Download Done!" and "You can safely close the program".
