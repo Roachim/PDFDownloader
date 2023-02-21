@@ -5,7 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
-using Excel = Microsoft.Office.Interop.Excel;
+using Excel = Microsoft.Office.Interop.Excel;   //A COM reference to handle the excel file
 using System.Runtime.InteropServices;
 using static System.Net.WebRequestMethods;
 using Microsoft.Office.Interop.Excel;
@@ -19,16 +19,24 @@ namespace PDFDownloader.Classes
     public static class ExcelReader
     {
         private static SemaphoreSlim semaphore;
-        private static int padding;
+        private static int padding;                 //Padding is used to better follow threading principles
         //Method - Get the Metadata Excel file
 
         //read excel data; add data to a list so we only access it once
+
+        /// <summary>
+        /// Main method, the only one to be used outside the class itself.
+        /// Read excel ark, sorts links in excel into tasks, runs through the tasks.
+        /// Downloads PDF's and provides a .txt with the results
+        /// </summary>
+        /// <param name="filepathAndFile">A string text of the path to the file, inclusding name of file</param>
+        /// <returns>Void</returns>
         public static async Task ReadExcel(string filepathAndFile)
         {
-            int maxThreads = 100;
+            int maxThreads = 100;   //maximum number of threads allowed for the semaphore
             semaphore = new SemaphoreSlim(0, maxThreads);    //Semaphore; tasks allowed at once
             padding = 0;
-            bool useSemaphores = true;
+            bool useSemaphores = true; //unused bool
 
             //HTTP start client
             using var client = new HttpClient();
@@ -44,9 +52,9 @@ namespace PDFDownloader.Classes
 
             string DownloadFolder = Guide.PDFLocation;
 
-            if (System.IO.Directory.Exists(DownloadFolder))
+            if (System.IO.Directory.Exists(DownloadFolder)) //Delete and create a download folder for files to be downloaded
             {
-                System.IO.Directory.Delete(DownloadFolder, true);
+                System.IO.Directory.Delete(DownloadFolder, true);   //True to delete everything within the folder as well
             }
 
             System.IO.Directory.CreateDirectory(DownloadFolder);
@@ -59,12 +67,13 @@ namespace PDFDownloader.Classes
             }
             
 
-            using StreamWriter textFileStream = System.IO.File.CreateText(PDFStatustext);
+            using StreamWriter textFileStream = System.IO.File.CreateText(PDFStatustext);   //wrtier used for the .txt file that records result
 
             string HTTP = string.Empty;
             string HTTP2 = string.Empty;
             string filename = string.Empty;
-            int tempRow = 30;
+            int tempRow = 30;   //Used in testing
+
             int rows = xlRange.Rows.Count;      // Setting counters outside the loop speeds it up
             int cols = xlRange.Columns.Count;
 
@@ -81,7 +90,6 @@ namespace PDFDownloader.Classes
                     {
                         continue;
                     }
-                    //alternative: save all links in dictionaries, use the after
 
                     if(j == 1) { filename = xlRange.Cells[i, j].Value2.ToString() + ".pdf"; }
                     if(j == 38) { HTTP = xlRange.Cells[i, j].Value2.ToString(); }
@@ -114,9 +122,7 @@ namespace PDFDownloader.Classes
             //quit and release
             xlApp.Quit();
             Marshal.ReleaseComObject(xlApp);
-
         }
-
 
         /// <summary>
         /// Task to be run for every pdf. Downloades pdf via links. Writes the result to a .txt and can be limited with semaphores
@@ -149,10 +155,18 @@ namespace PDFDownloader.Classes
                 textFileStream.WriteLine(pdfName + " = not downloaded");
             }
 
-
             semaphore.Release(); // program MUST reach this line of code
         }
 
+        /// <summary>
+        /// Attempts to download a pdf using a link.
+        /// </summary>
+        /// <param name="client">http client</param>
+        /// <param name="pdfName">Choose a name for the pdf</param>
+        /// <param name="http">The http link. The provided download link</param>
+        /// <param name="textFileStream">A streamWriter to be used for the .txt file</param>
+        /// <param name="fileDownloaded">current state of the file downloaded</param>
+        /// <returns>False if pdf could not be downloaded; True if it succeeded.</returns>
         private static async Task<bool> CheckLinkStatus(HttpClient client, string pdfName, string http, StreamWriter textFileStream, bool fileDownloaded)
         {
             try
@@ -160,7 +174,6 @@ namespace PDFDownloader.Classes
                 if (Uri.IsWellFormedUriString(http, UriKind.Absolute)) //see if URI is permissable; use other link if not
                 {
                     var response = await client.GetAsync(http);
-
 
                     if (response.StatusCode == System.Net.HttpStatusCode.OK) // use other link if not ok
                     {
@@ -212,7 +225,6 @@ namespace PDFDownloader.Classes
             }
         }
 
-        
         /// <summary>
         /// Method for checking whether a file, already downloaded, is pdf or not.
         /// </summary>
