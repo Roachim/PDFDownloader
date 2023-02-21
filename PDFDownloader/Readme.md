@@ -32,6 +32,7 @@ If you have any question regarding the steps, please refer to the "advanced how 
 - You should now see new text pop into the window(example below), and if you do, simply press 'Enter'.
 
 Example of a path: C:\Users\xyz\Desktop\PDFAssignment
+
                    -----------------------------------
 
 4: Wait until done?
