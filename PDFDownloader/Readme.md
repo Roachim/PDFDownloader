@@ -9,7 +9,7 @@ It will download the files provided by the links in the collons AL and AM. Assum
 ## How to use?
 **1**: Start the program
 **2**: Read the prompt on the screen.
-**3**: Copy the path to the GRI file and paste it into the program window.
+**3**: Copy the path to the GRI file and paste it into the program window and click enter.
 **4**: Wait until the program Writes "Download Done!" and tells you that you can safely stop the program.
 **5**: Check the folder with the GRI file. Profit.
 
@@ -26,9 +26,9 @@ If you have any question regarding the steps, please refer to the "advanced how 
 
 **3: Copy the path?**
 - Find the folder that contains the GRI_2017_2020 excel file, open it.
-- Some place on the screen you should see names with arrows pointing to the right, click ONCE on it.
-- Right after, press the keys ctrl and c at the same time.
-- Now back to the program, click on the program window, anywhere on the black screen, and press the crtl and v keys at the same time.
+- Some place on the screen you should see names with arrows pointing to the right, click ONCE on it, it should now be marked blue.
+- Right after, press the keys 'ctrl' and 'c' at the same time.
+- Now back to the program, click on the program window, anywhere on the black screen, and press the 'crtl' and 'v' keys at the same time.
 - You should now see new text pop into the window(example below), and if you do, simply press 'Enter'.
 
 Example of a path:
