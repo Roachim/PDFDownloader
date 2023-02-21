@@ -1,5 +1,5 @@
 ﻿# PDF Downloader
-
+PDF Downloader console program.
 
 ## What is?
 This PDFDownloader, is a program that read through an excel file with the GRI_2017_2020 format. Do NOT use other formats!
@@ -47,7 +47,7 @@ Example of a path: C:\Users\xyz\Desktop\PDFAssignment
 
 
 
-###things to add
+### Things to add
 - Let a user provide name of the excel file. (Currently has to be GRI_2017_2020)
 - Provide support for other formats than specific am and al positions in the excel.
 - Error handling for wrong format of excel file.
@@ -55,7 +55,7 @@ Example of a path: C:\Users\xyz\Desktop\PDFAssignment
 - Provide better support for non-windows (The marshall.comObjectRelease only works on windows).
 - Replace the current writing system with a singleton NoteTaker object.
 
-###Other things that could be cool
+### Other things that could be cool
 - A UI system for easier targeting of the folder containing the excel file
 - A UI system for targeting the excel file.
 - A UI system for targeting a download folder.
@@ -67,5 +67,5 @@ Example of a path: C:\Users\xyz\Desktop\PDFAssignment
 
 
 
-####Author
+#### Author
 - Joachim G. Frank
