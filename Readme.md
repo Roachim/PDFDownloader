@@ -21,7 +21,12 @@ If you have any question regarding the steps, please refer to the "advanced how 
 - Download the program
 - If on Github, click on 'Code' in the green box and click 'Download Zip'.
 - If you download as zip, put the downloaded file in a folder alone, then right click and press 'unzip here'
-- After downloading the program, double click on the "PDFDownloader.exe".
+- After downloading the program, double click on the "PDFDownloader.sln".
+- This will open the program in visual studio
+- You will now see a green triangle near the upper part of the program; click it to run the program.
+
+ALTERNATIVE:
+- If you have downloaded the program as a .exe, run that instead.(simply double click on it)
 
 **2: Read the prompt on the screen?**
 - After starting the program, assuming no errors occur, you should now see a black screen show up with text on it.
