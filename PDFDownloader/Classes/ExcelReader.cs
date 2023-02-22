@@ -82,7 +82,7 @@ namespace PDFDownloader.Classes
 
             List<Task> tasks = new List<Task>();
 
-            for (int i = 2; i <= tempRow; i++)     //i=2. reason: we skip the first, which is 1. excel does not start at 0.
+            for (int i = 2; i <= rows; i++)     //i=2. reason: we skip the first, which is 1. excel does not start at 0.
             {
                 for (int j = 1; j <= cols; j++)
                 {
