@@ -18,6 +18,9 @@ If you have any question regarding the steps, please refer to the "advanced how 
 
 ### Advanced how to
 **1: starting the program?**
+- Download the program
+- If on Github, click on 'Code' in the green box and click 'Download Zip'.
+- If you download as zip, put the downloaded file in a folder alone, then right click and press 'unzip here'
 - After downloading the program, double click on the "PDFDownloader.exe".
 
 **2: Read the prompt on the screen?**
@@ -48,8 +51,9 @@ Example of a path:
 
 
 ## **WARNING** 
-There may be complications when running this on a non-windows machine!!
-Be aware! Be careful!
+- There may be complications when running this on a non-windows machine!!
+- Also, do not stop it halfway! It will leave a process running in the background.
+If you are forced to stop the application, you must manually kill the process with task manager, or by restarting the computer.
 
 
 ### Things to add

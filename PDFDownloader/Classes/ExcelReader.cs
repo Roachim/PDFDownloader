@@ -72,7 +72,7 @@ namespace PDFDownloader.Classes
             string HTTP = string.Empty;
             string HTTP2 = string.Empty;
             string filename = string.Empty;
-            int tempRow = 30;   //Used in testing
+            int tempRow = 20;   //Used in testing
 
             int rows = xlRange.Rows.Count;      // Setting counters outside the loop speeds it up
             int cols = xlRange.Columns.Count;
@@ -82,11 +82,11 @@ namespace PDFDownloader.Classes
 
             List<Task> tasks = new List<Task>();
 
-            for (int i = 2; i <= rows; i++) 
+            for (int i = 2; i <= tempRow; i++)     //i=2. reason: we skip the first, which is 1. excel does not start at 0.
             {
                 for (int j = 1; j <= cols; j++)
                 {
-                    if(j != 1 && j != 38 && j != 89)
+                    if(j != 1 && j != 38 && j != 89)    //we skip columns we don't need. Only these(1, 38 and 89) are important
                     {
                         continue;
                     }
@@ -100,6 +100,8 @@ namespace PDFDownloader.Classes
 
             }
             Thread.Sleep(500);
+
+            //Console.WriteLine(tasks.Count().ToString());        //21057
 
             semaphore.Release(maxThreads);
 
@@ -138,7 +140,7 @@ namespace PDFDownloader.Classes
         {
             await semaphore.WaitAsync(); //await and waitAsync the semaphore, or suffer the consequences...
             
-            Interlocked.Add(ref padding, 100);
+            //Interlocked.Add(ref padding, 100);
 
             bool fileDownloaded = true;
 
@@ -159,7 +161,7 @@ namespace PDFDownloader.Classes
         }
 
         /// <summary>
-        /// Attempts to download a pdf using a link.
+        /// Checks the status of a link, then, if ok, attempts download with 'UseDownloadLink' function.
         /// </summary>
         /// <param name="client">http client</param>
         /// <param name="pdfName">Choose a name for the pdf</param>
@@ -185,7 +187,8 @@ namespace PDFDownloader.Classes
             }
             catch (Exception ex) //whatever happens with the error
             { 
-                Console.WriteLine(ex.Message);
+                Console.WriteLine(pdfName + " = " + ex.Message);
+                Console.WriteLine(ex.StackTrace);
                 fileDownloaded = false;
             }
 
@@ -230,7 +233,7 @@ namespace PDFDownloader.Classes
         /// </summary>
         /// <param name="path">Location of pdf, including name of pdf</param>
         /// <returns>bool; false if input is not pdf. True if input is pdf</returns>
-        public static bool IsPdf(string path) //determine whether or not a file is a pdf, does not work for 0 kb psf files for some reason
+        public static bool IsPdf(string path) //determine whether or not a file is a pdf, does not work for 0 kb pdf files for some reason
         {
             var pdfString = "%PDF-";
             var pdfBytes = Encoding.ASCII.GetBytes(pdfString);
