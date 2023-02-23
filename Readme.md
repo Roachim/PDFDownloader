@@ -1,5 +1,8 @@
 ﻿# PDF Downloader
 PDF Downloader console program.
+Can show you:
+- Reading of excel files using COM references.
+- Multithreading using semaphores and Tasks
 
 ## What is?
 This PDFDownloader, is a program that read through an excel file with the GRI_2017_2020 format. Do NOT use other formats!
